@@ -5,6 +5,7 @@ load_dotenv()
 import yfinance as yf
 import requests
 import json
+import re
 from datetime import datetime, timedelta
 import anthropic
 import pytz
@@ -72,56 +73,50 @@ def update_github_secret(secret_name, secret_value):
     except Exception as e:
         print(f"Secret 업데이트 실패: {e}")
 
+def get_naver_index(code):
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        url = f"https://m.stock.naver.com/api/index/{code}/basic"
+        r = requests.get(url, headers=headers)
+        data = r.json()
+        curr = float(data["closePrice"].replace(",", ""))
+        change = float(data["compareToPreviousClosePrice"].replace(",", ""))
+        change_pct = float(data["fluctuationsRatio"])
+        arrow = "▲" if change >= 0 else "▼"
+        return f"{curr:,.2f} {arrow}{abs(change_pct):.2f}%"
+    except Exception as e:
+        print(f"네이버 지수 오류 ({code}): {e}")
+        return "오류"
+
+def get_naver_stock(ticker):
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        url = f"https://m.stock.naver.com/api/stock/{ticker}/basic"
+        r = requests.get(url, headers=headers)
+        data = r.json()
+        curr = float(data["closePrice"].replace(",", ""))
+        change_pct = float(data["fluctuationsRatio"])
+        arrow = "▲" if change_pct >= 0 else "▼"
+        return f"{curr:,.0f} {arrow}{abs(change_pct):.2f}%"
+    except Exception as e:
+        print(f"네이버 종목 오류 ({ticker}): {e}")
+        return "오류"
+
 def get_market_data():
-    from pykrx import stock
-
     result = {}
-    today_str = now.strftime("%Y%m%d")
-    prev_str = (now - timedelta(days=7)).strftime("%Y%m%d")
 
-    # 코스피 (pykrx)
-    try:
-        df = stock.get_index_ohlcv(prev_str, today_str, "1001")
-        df = df.dropna()
-        curr = float(df["종가"].iloc[-1])
-        prev = float(df["종가"].iloc[-2])
-        change = (curr - prev) / prev * 100
-        arrow = "▲" if change > 0 else "▼"
-        result["코스피"] = f"{curr:,.2f} {arrow}{abs(change):.1f}%"
-        print(f"코스피 날짜: {df.index[-1].date()} = {curr:,.2f}")
-    except Exception as e:
-        result["코스피"] = "오류"
-        print(f"코스피 오류: {e}")
+    # 국내 지수 (네이버 API)
+    result["코스피"] = get_naver_index("KOSPI")
+    result["코스닥"] = get_naver_index("KOSDAQ")
 
-    # 코스닥 (pykrx)
-    try:
-        df = stock.get_index_ohlcv(prev_str, today_str, "2001")
-        df = df.dropna()
-        curr = float(df["종가"].iloc[-1])
-        prev = float(df["종가"].iloc[-2])
-        change = (curr - prev) / prev * 100
-        arrow = "▲" if change > 0 else "▼"
-        result["코스닥"] = f"{curr:,.2f} {arrow}{abs(change):.1f}%"
-    except Exception as e:
-        result["코스닥"] = "오류"
-
-    # 한국 개별 종목 (pykrx)
+    # 국내 종목 (네이버 API)
     kr_tickers = {
         "삼성전자": "005930",
         "SK하이닉스": "000660",
         "네이버": "035420",
     }
     for name, ticker in kr_tickers.items():
-        try:
-            df = stock.get_market_ohlcv(prev_str, today_str, ticker)
-            df = df.dropna()
-            curr = float(df["종가"].iloc[-1])
-            prev = float(df["종가"].iloc[-2])
-            change = (curr - prev) / prev * 100
-            arrow = "▲" if change > 0 else "▼"
-            result[name] = f"{curr:,.0f} {arrow}{abs(change):.1f}%"
-        except Exception as e:
-            result[name] = "오류"
+        result[name] = get_naver_stock(ticker)
 
     # 해외 종목/지수 (yfinance)
     us_tickers = {
@@ -149,7 +144,7 @@ def get_market_data():
                 result[name] = f"{curr:,.1f} {arrow}{abs(change):.1f}%"
             else:
                 result[name] = "데이터없음"
-        except Exception as e:
+        except:
             result[name] = "오류"
 
     return result
