@@ -90,10 +90,14 @@ def update_github_secret(secret_name, secret_value):
 
 def get_market_data():
     result = {}
+    # 최근 10일치 데이터 가져와서 가장 최신 종가 사용
+    end = now.strftime("%Y-%m-%d")
+    start = (now - timedelta(days=10)).strftime("%Y-%m-%d")
+    
     for name, ticker in TICKERS.items():
         try:
             t = yf.Ticker(ticker)
-            hist = t.history(period="5d")
+            hist = t.history(start=start, end=end)
             hist = hist.dropna()
             if len(hist) >= 2:
                 prev = float(hist["Close"].iloc[-2])
@@ -101,9 +105,11 @@ def get_market_data():
                 change = (curr - prev) / prev * 100
                 arrow = "▲" if change > 0 else "▼"
                 result[name] = f"{curr:,.1f} {arrow}{abs(change):.1f}%"
+                # 날짜 확인용 출력
+                print(f"{name}: {hist.index[-1].date()} = {curr:,.1f}")
             else:
                 result[name] = "데이터없음"
-        except:
+        except Exception as e:
             result[name] = "오류"
     return result
 
