@@ -111,7 +111,7 @@ def get_ai_analysis(market_data, news_headlines):
 💬 한줄 총평"""
 
     message = client.messages.create(
-        model="claude-haiku-4-5-20251001",
+        model="claude-sonnet-4-6",
         max_tokens=1500,
         messages=[{"role": "user", "content": prompt}]
     )
