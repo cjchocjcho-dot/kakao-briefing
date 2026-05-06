@@ -1,4 +1,3 @@
-
 from dotenv import load_dotenv
 import os
 load_dotenv()
@@ -11,8 +10,13 @@ import anthropic
 
 # ===== 설정 =====
 KAKAO_ACCESS_TOKEN = os.getenv("KAKAO_ACCESS_TOKEN")
+KAKAO_REFRESH_TOKEN = os.getenv("KAKAO_REFRESH_TOKEN")
+KAKAO_REST_API_KEY = os.getenv("KAKAO_REST_API_KEY")
+KAKAO_CLIENT_SECRET = os.getenv("KAKAO_CLIENT_SECRET")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+GITHUB_REPO = os.getenv("GITHUB_REPO")
 
 SECTORS = ["반도체", "AI", "정유", "선박", "해운", "물류", "원자재"]
 
@@ -31,6 +35,58 @@ TICKERS = {
     "원/달러": "KRW=X",
     "WTI유가": "CL=F",
 }
+
+def refresh_kakao_token():
+    url = "https://kauth.kakao.com/oauth/token"
+    data = {
+        "grant_type": "refresh_token",
+        "client_id": KAKAO_REST_API_KEY,
+        "refresh_token": KAKAO_REFRESH_TOKEN,
+        "client_secret": KAKAO_CLIENT_SECRET,
+    }
+    r = requests.post(url, data=data)
+    result = r.json()
+    if "access_token" in result:
+        new_token = result["access_token"]
+        print("카카오 토큰 갱신 성공!")
+        # GitHub Secrets 업데이트
+        update_github_secret("KAKAO_ACCESS_TOKEN", new_token)
+        # refresh_token 갱신된 경우 업데이트
+        if "refresh_token" in result:
+            update_github_secret("KAKAO_REFRESH_TOKEN", result["refresh_token"])
+        return new_token
+    else:
+        print(f"토큰 갱신 실패: {result}")
+        return KAKAO_ACCESS_TOKEN
+
+def update_github_secret(secret_name, secret_value):
+    try:
+        # GitHub Public Key 가져오기
+        repo = GITHUB_REPO
+        headers = {
+            "Authorization": f"Bearer {GITHUB_TOKEN}",
+            "Accept": "application/vnd.github+json"
+        }
+        key_url = f"https://api.github.com/repos/{repo}/actions/secrets/public-key"
+        key_resp = requests.get(key_url, headers=headers).json()
+        public_key = key_resp["key"]
+        key_id = key_resp["key_id"]
+
+        # 암호화
+        from base64 import b64encode
+        from nacl import encoding, public
+        public_key_obj = public.PublicKey(public_key.encode("utf-8"), encoding.Base64Encoder())
+        sealed_box = public.SealedBox(public_key_obj)
+        encrypted = sealed_box.encrypt(secret_value.encode("utf-8"))
+        encrypted_value = b64encode(encrypted).decode("utf-8")
+
+        # Secret 업데이트
+        secret_url = f"https://api.github.com/repos/{repo}/actions/secrets/{secret_name}"
+        payload = {"encrypted_value": encrypted_value, "key_id": key_id}
+        requests.put(secret_url, headers=headers, json=payload)
+        print(f"{secret_name} 업데이트 완료!")
+    except Exception as e:
+        print(f"Secret 업데이트 실패: {e}")
 
 def get_market_data():
     result = {}
@@ -53,7 +109,6 @@ def get_market_data():
 def get_news():
     yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
     today = datetime.now().strftime("%Y-%m-%d")
-
     sector_query = " OR ".join(SECTORS)
     query = f"미국증시 OR 월가 OR 나스닥 OR {sector_query}"
     url = (
@@ -94,7 +149,7 @@ def get_ai_analysis(market_data, news_headlines):
 [관심 섹터]
 {sectors_str}
 
-반드시 아래 형식으로만 작성해주세요. 제목이나 날짜는 따로 쓰지 마세요. 각 섹션당 4줄 이내로 간결하게 작성해주세요:
+반드시 아래 형식으로만 작성해주세요. 제목이나 날짜는 따로 쓰지 마세요. 각 섹션당 3줄 이내로 간결하게 작성해주세요:
 
 🌙 간밤 미국 증시 마감 요약
 (나스닥/S&P500 흐름과 주요 이슈를 2~3줄로 설명)
@@ -112,19 +167,17 @@ def get_ai_analysis(market_data, news_headlines):
 
     message = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=1000,
+        max_tokens=800,
         messages=[{"role": "user", "content": prompt}]
     )
     return message.content[0].text
 
-def send_kakao(text):
+def send_kakao(text, token):
     url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
-    headers = {"Authorization": f"Bearer {KAKAO_ACCESS_TOKEN}"}
-
+    headers = {"Authorization": f"Bearer {token}"}
     chunks = []
     lines = text.split('\n')
     current = ""
-
     for line in lines:
         if len(current) + len(line) + 1 > 400:
             if current:
@@ -134,7 +187,6 @@ def send_kakao(text):
             current += "\n" + line if current else line
     if current:
         chunks.append(current.strip())
-
     for i, chunk in enumerate(chunks):
         data = {
             "template_object": json.dumps({
@@ -152,8 +204,10 @@ def send_kakao(text):
 def main():
     today = datetime.now().strftime("%Y.%m.%d (%a)")
     yesterday = (datetime.now() - timedelta(days=1)).strftime("%m.%d")
-    print("데이터 수집 중...")
+    print("토큰 갱신 중...")
+    token = refresh_kakao_token()
 
+    print("데이터 수집 중...")
     market_data = get_market_data()
     news = get_news()
     print("AI 분석 중...")
@@ -188,8 +242,8 @@ WTI유가: {market_data['WTI유가']}"""
     print("\n--- AI 분석 ---")
     print(msg2)
 
-    send_kakao(msg1)
-    send_kakao(msg2)
+    send_kakao(msg1, token)
+    send_kakao(msg2, token)
 
 if __name__ == "__main__":
     main()
