@@ -54,9 +54,7 @@ def refresh_kakao_token():
     if "access_token" in result:
         new_token = result["access_token"]
         print("카카오 토큰 갱신 성공!")
-        # GitHub Secrets 업데이트
         update_github_secret("KAKAO_ACCESS_TOKEN", new_token)
-        # refresh_token 갱신된 경우 업데이트
         if "refresh_token" in result:
             update_github_secret("KAKAO_REFRESH_TOKEN", result["refresh_token"])
         return new_token
@@ -66,7 +64,6 @@ def refresh_kakao_token():
 
 def update_github_secret(secret_name, secret_value):
     try:
-        # GitHub Public Key 가져오기
         repo = GITHUB_REPO
         headers = {
             "Authorization": f"Bearer {GITHUB_TOKEN}",
@@ -77,7 +74,6 @@ def update_github_secret(secret_name, secret_value):
         public_key = key_resp["key"]
         key_id = key_resp["key_id"]
 
-        # 암호화
         from base64 import b64encode
         from nacl import encoding, public
         public_key_obj = public.PublicKey(public_key.encode("utf-8"), encoding.Base64Encoder())
@@ -85,7 +81,6 @@ def update_github_secret(secret_name, secret_value):
         encrypted = sealed_box.encrypt(secret_value.encode("utf-8"))
         encrypted_value = b64encode(encrypted).decode("utf-8")
 
-        # Secret 업데이트
         secret_url = f"https://api.github.com/repos/{repo}/actions/secrets/{secret_name}"
         payload = {"encrypted_value": encrypted_value, "key_id": key_id}
         requests.put(secret_url, headers=headers, json=payload)
@@ -99,7 +94,6 @@ def get_market_data():
         try:
             t = yf.Ticker(ticker)
             hist = t.history(period="5d")
-            # 유효한 데이터만 필터링
             hist = hist.dropna()
             if len(hist) >= 2:
                 prev = float(hist["Close"].iloc[-2])
@@ -137,7 +131,7 @@ def get_news():
 
 def get_ai_analysis(market_data, news_headlines):
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-     today_str = now.strftime("%Y년 %m월 %d일")
+    today_str = now.strftime("%Y년 %m월 %d일")
     data_str = json.dumps(market_data, ensure_ascii=False)
     news_str = "\n".join([f"- {n}" for n in news_headlines])
     sectors_str = ", ".join(SECTORS)
@@ -183,29 +177,30 @@ def send_kakao(text, token):
     url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
     headers = {"Authorization": f"Bearer {token}"}
 
-    # 섹션 단위로 분할 (이모지 기준)
-    sections = []
+    chunks = []
+    lines = text.split('\n')
     current = ""
-    for line in text.split('\n'):
-        if line.startswith(('🌙', '📰', '🔮', '💬', '📊', '🇺🇸', '📈', '💼', '💱')) and current:
-            sections.append(current.strip())
+    for line in lines:
+        if len(current) + len(line) + 1 > 800:
+            if current:
+                chunks.append(current.strip())
             current = line
         else:
             current += "\n" + line if current else line
     if current:
-        sections.append(current.strip())
+        chunks.append(current.strip())
 
-    for i, section in enumerate(sections):
+    for i, chunk in enumerate(chunks):
         data = {
             "template_object": json.dumps({
                 "object_type": "text",
-                "text": section,
+                "text": chunk,
                 "link": {"web_url": "https://finance.naver.com"}
             }, ensure_ascii=False)
         }
         r = requests.post(url, headers=headers, data=data)
         if r.status_code == 200:
-            print(f"메시지 {i+1}/{len(sections)} 전송 성공!")
+            print(f"메시지 {i+1}/{len(chunks)} 전송 성공!")
         else:
             print(f"전송 실패: {r.text}")
 
