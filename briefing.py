@@ -76,14 +76,15 @@ def update_github_secret(secret_name, secret_value):
 def get_naver_index(code):
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
-        url = f"https://m.stock.naver.com/api/index/{code}/basic"
+        url = f"https://m.stock.naver.com/api/index/{code}/price?pageSize=2&pageNo=1"
         r = requests.get(url, headers=headers)
         data = r.json()
-        print(f"[{code}] API 응답: {data}")  # 디버깅용
-        curr = float(str(data["closePrice"]).replace(",", ""))
-        change_pct = float(str(data["fluctuationsRatio"]).replace(",", ""))
-        arrow = "▲" if change_pct >= 0 else "▼"
-        return f"{curr:,.2f} {arrow}{abs(change_pct):.2f}%"
+        print(f"[{code}] 히스토리 응답: {data}")
+        curr = float(str(data[0]["closePrice"]).replace(",", ""))
+        prev = float(str(data[1]["closePrice"]).replace(",", ""))
+        change = (curr - prev) / prev * 100
+        arrow = "▲" if change >= 0 else "▼"
+        return f"{curr:,.2f} {arrow}{abs(change):.2f}%"
     except Exception as e:
         print(f"네이버 지수 오류 ({code}): {e}")
         return "오류"
@@ -91,14 +92,15 @@ def get_naver_index(code):
 def get_naver_stock(ticker):
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
-        url = f"https://m.stock.naver.com/api/stock/{ticker}/basic"
+        url = f"https://m.stock.naver.com/api/stock/{ticker}/price?pageSize=2&pageNo=1"
         r = requests.get(url, headers=headers)
         data = r.json()
-        print(f"[{ticker}] API 응답: {data}")  # 디버깅용
-        curr = float(str(data["closePrice"]).replace(",", ""))
-        change_pct = float(str(data["fluctuationsRatio"]).replace(",", ""))
-        arrow = "▲" if change_pct >= 0 else "▼"
-        return f"{curr:,.0f} {arrow}{abs(change_pct):.2f}%"
+        print(f"[{ticker}] 히스토리 응답: {data}")
+        curr = float(str(data[0]["closePrice"]).replace(",", ""))
+        prev = float(str(data[1]["closePrice"]).replace(",", ""))
+        change = (curr - prev) / prev * 100
+        arrow = "▲" if change >= 0 else "▼"
+        return f"{curr:,.0f} {arrow}{abs(change):.2f}%"
     except Exception as e:
         print(f"네이버 종목 오류 ({ticker}): {e}")
         return "오류"
