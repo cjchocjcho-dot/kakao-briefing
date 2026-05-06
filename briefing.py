@@ -175,29 +175,30 @@ def get_ai_analysis(market_data, news_headlines):
 def send_kakao(text, token):
     url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
     headers = {"Authorization": f"Bearer {token}"}
-    chunks = []
-    lines = text.split('\n')
+
+    # 섹션 단위로 분할 (이모지 기준)
+    sections = []
     current = ""
-    for line in lines:
-        if len(current) + len(line) + 1 > 400:
-            if current:
-                chunks.append(current.strip())
+    for line in text.split('\n'):
+        if line.startswith(('🌙', '📰', '🔮', '💬', '📊', '🇺🇸', '📈', '💼', '💱')) and current:
+            sections.append(current.strip())
             current = line
         else:
             current += "\n" + line if current else line
     if current:
-        chunks.append(current.strip())
-    for i, chunk in enumerate(chunks):
+        sections.append(current.strip())
+
+    for i, section in enumerate(sections):
         data = {
             "template_object": json.dumps({
                 "object_type": "text",
-                "text": chunk,
+                "text": section,
                 "link": {"web_url": "https://finance.naver.com"}
             }, ensure_ascii=False)
         }
         r = requests.post(url, headers=headers, data=data)
         if r.status_code == 200:
-            print(f"메시지 {i+1}/{len(chunks)} 전송 성공!")
+            print(f"메시지 {i+1}/{len(sections)} 전송 성공!")
         else:
             print(f"전송 실패: {r.text}")
 
