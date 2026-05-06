@@ -1,0 +1,27 @@
+name: 주식 브리핑 봇
+
+on:
+  schedule:
+    - cron: '0 22 * * 0-4'  # 매일 UTC 22:00 = 한국 오전 7시 (월~금)
+  workflow_dispatch:  # 수동 실행용
+
+jobs:
+  send-briefing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python 설치
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 패키지 설치
+        run: pip install yfinance requests anthropic python-dotenv
+
+      - name: 브리핑 실행
+        env:
+          KAKAO_ACCESS_TOKEN: ${{ secrets.KAKAO_ACCESS_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          NEWSAPI_KEY: ${{ secrets.NEWSAPI_KEY }}
+        run: python briefing.py
