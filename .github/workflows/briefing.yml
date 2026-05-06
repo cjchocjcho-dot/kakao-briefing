@@ -8,8 +8,6 @@ on:
 jobs:
   send-briefing:
     runs-on: ubuntu-latest
-    permissions:
-      secrets: write
     steps:
       - uses: actions/checkout@v4
 
