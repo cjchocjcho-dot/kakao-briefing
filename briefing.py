@@ -94,7 +94,7 @@ def get_ai_analysis(market_data, news_headlines):
 [관심 섹터]
 {sectors_str}
 
-반드시 아래 형식으로만 작성해주세요. 제목이나 날짜는 따로 쓰지 마세요:
+반드시 아래 형식으로만 작성해주세요. 제목이나 날짜는 따로 쓰지 마세요. 각 섹션당 3줄 이내로 간결하게 작성해주세요:
 
 🌙 간밤 미국 증시 마감 요약
 (나스닥/S&P500 흐름과 주요 이슈를 2~3줄로 설명)
@@ -112,7 +112,7 @@ def get_ai_analysis(market_data, news_headlines):
 
     message = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=1500,
+        max_tokens=800,
         messages=[{"role": "user", "content": prompt}]
     )
     return message.content[0].text
