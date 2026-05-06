@@ -3,6 +3,12 @@ from dotenv import load_dotenv
 import os
 load_dotenv()
 
+import yfinance as yf
+import requests
+import json
+from datetime import datetime, timedelta
+import anthropic
+
 # ===== 설정 =====
 KAKAO_ACCESS_TOKEN = os.getenv("KAKAO_ACCESS_TOKEN")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
