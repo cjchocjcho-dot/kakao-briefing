@@ -25,22 +25,6 @@ GITHUB_REPO = os.getenv("GITHUB_REPO")
 
 SECTORS = ["반도체", "AI", "정유", "선박", "해운", "물류", "원자재"]
 
-TICKERS = {
-    "삼성전자": "005930.KS",
-    "SK하이닉스": "000660.KS",
-    "네이버": "035420.KS",
-    "라인야후": "4689.T",
-    "애플": "AAPL",
-    "테슬라": "TSLA",
-    "구글": "GOOGL",
-    "코스피": "^KS11",
-    "코스닥": "^KQ11",
-    "나스닥": "^IXIC",
-    "S&P500": "^GSPC",
-    "원/달러": "KRW=X",
-    "WTI유가": "CL=F",
-}
-
 def refresh_kakao_token():
     url = "https://kauth.kakao.com/oauth/token"
     data = {
@@ -89,12 +73,70 @@ def update_github_secret(secret_name, secret_value):
         print(f"Secret 업데이트 실패: {e}")
 
 def get_market_data():
+    from pykrx import stock
+
     result = {}
-    # 최근 10일치 데이터 가져와서 가장 최신 종가 사용
+    today_str = now.strftime("%Y%m%d")
+    prev_str = (now - timedelta(days=7)).strftime("%Y%m%d")
+
+    # 코스피 (pykrx)
+    try:
+        df = stock.get_index_ohlcv(prev_str, today_str, "1001")
+        df = df.dropna()
+        curr = float(df["종가"].iloc[-1])
+        prev = float(df["종가"].iloc[-2])
+        change = (curr - prev) / prev * 100
+        arrow = "▲" if change > 0 else "▼"
+        result["코스피"] = f"{curr:,.2f} {arrow}{abs(change):.1f}%"
+        print(f"코스피 날짜: {df.index[-1].date()} = {curr:,.2f}")
+    except Exception as e:
+        result["코스피"] = "오류"
+        print(f"코스피 오류: {e}")
+
+    # 코스닥 (pykrx)
+    try:
+        df = stock.get_index_ohlcv(prev_str, today_str, "2001")
+        df = df.dropna()
+        curr = float(df["종가"].iloc[-1])
+        prev = float(df["종가"].iloc[-2])
+        change = (curr - prev) / prev * 100
+        arrow = "▲" if change > 0 else "▼"
+        result["코스닥"] = f"{curr:,.2f} {arrow}{abs(change):.1f}%"
+    except Exception as e:
+        result["코스닥"] = "오류"
+
+    # 한국 개별 종목 (pykrx)
+    kr_tickers = {
+        "삼성전자": "005930",
+        "SK하이닉스": "000660",
+        "네이버": "035420",
+    }
+    for name, ticker in kr_tickers.items():
+        try:
+            df = stock.get_market_ohlcv(prev_str, today_str, ticker)
+            df = df.dropna()
+            curr = float(df["종가"].iloc[-1])
+            prev = float(df["종가"].iloc[-2])
+            change = (curr - prev) / prev * 100
+            arrow = "▲" if change > 0 else "▼"
+            result[name] = f"{curr:,.0f} {arrow}{abs(change):.1f}%"
+        except Exception as e:
+            result[name] = "오류"
+
+    # 해외 종목/지수 (yfinance)
+    us_tickers = {
+        "라인야후": "4689.T",
+        "애플": "AAPL",
+        "테슬라": "TSLA",
+        "구글": "GOOGL",
+        "나스닥": "^IXIC",
+        "S&P500": "^GSPC",
+        "원/달러": "KRW=X",
+        "WTI유가": "CL=F",
+    }
     end = now.strftime("%Y-%m-%d")
     start = (now - timedelta(days=10)).strftime("%Y-%m-%d")
-    
-    for name, ticker in TICKERS.items():
+    for name, ticker in us_tickers.items():
         try:
             t = yf.Ticker(ticker)
             hist = t.history(start=start, end=end)
@@ -105,12 +147,11 @@ def get_market_data():
                 change = (curr - prev) / prev * 100
                 arrow = "▲" if change > 0 else "▼"
                 result[name] = f"{curr:,.1f} {arrow}{abs(change):.1f}%"
-                # 날짜 확인용 출력
-                print(f"{name}: {hist.index[-1].date()} = {curr:,.1f}")
             else:
                 result[name] = "데이터없음"
         except Exception as e:
             result[name] = "오류"
+
     return result
 
 def get_news():
