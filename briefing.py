@@ -1,16 +1,12 @@
-import yfinance as yf
-import requests
-import json
-from datetime import datetime, timedelta
-import anthropic
+
 from dotenv import load_dotenv
 import os
 load_dotenv()
 
 # ===== 설정 =====
-KAKAO_ACCESS_TOKEN = os.getenv("mUzhTyJhf7tSuMNFIZ6_n0msLDu60_tNAAAAAQoNH5cAAAGd_EXWB4h6dPOEuoNF")
-ANTHROPIC_API_KEY = os.getenv("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")
-NEWSAPI_KEY = os.getenv("5b14ccfa96fd420298a62f054a4cf424")
+KAKAO_ACCESS_TOKEN = os.getenv("KAKAO_ACCESS_TOKEN")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
 
 SECTORS = ["반도체", "AI", "정유", "선박", "해운", "물류", "원자재"]
 
