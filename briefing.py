@@ -79,10 +79,10 @@ def get_naver_index(code):
         url = f"https://m.stock.naver.com/api/index/{code}/basic"
         r = requests.get(url, headers=headers)
         data = r.json()
-        curr = float(data["closePrice"].replace(",", ""))
-        change = float(data["compareToPreviousClosePrice"].replace(",", ""))
-        change_pct = float(data["fluctuationsRatio"])
-        arrow = "▲" if change >= 0 else "▼"
+        print(f"[{code}] API 응답: {data}")  # 디버깅용
+        curr = float(str(data["closePrice"]).replace(",", ""))
+        change_pct = float(str(data["fluctuationsRatio"]).replace(",", ""))
+        arrow = "▲" if change_pct >= 0 else "▼"
         return f"{curr:,.2f} {arrow}{abs(change_pct):.2f}%"
     except Exception as e:
         print(f"네이버 지수 오류 ({code}): {e}")
@@ -94,8 +94,9 @@ def get_naver_stock(ticker):
         url = f"https://m.stock.naver.com/api/stock/{ticker}/basic"
         r = requests.get(url, headers=headers)
         data = r.json()
-        curr = float(data["closePrice"].replace(",", ""))
-        change_pct = float(data["fluctuationsRatio"])
+        print(f"[{ticker}] API 응답: {data}")  # 디버깅용
+        curr = float(str(data["closePrice"]).replace(",", ""))
+        change_pct = float(str(data["fluctuationsRatio"]).replace(",", ""))
         arrow = "▲" if change_pct >= 0 else "▼"
         return f"{curr:,.0f} {arrow}{abs(change_pct):.2f}%"
     except Exception as e:
