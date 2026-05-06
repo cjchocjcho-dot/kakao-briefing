@@ -7,6 +7,11 @@ import requests
 import json
 from datetime import datetime, timedelta
 import anthropic
+import pytz
+
+# 한국 시간 기준
+KST = pytz.timezone('Asia/Seoul')
+now = datetime.now(KST)
 
 # ===== 설정 =====
 KAKAO_ACCESS_TOKEN = os.getenv("KAKAO_ACCESS_TOKEN")
@@ -94,9 +99,11 @@ def get_market_data():
         try:
             t = yf.Ticker(ticker)
             hist = t.history(period="5d")
-            if len(hist) >= 3:
-                prev = float(hist["Close"].iloc[-3])
-                curr = float(hist["Close"].iloc[-2])
+            # 유효한 데이터만 필터링
+            hist = hist.dropna()
+            if len(hist) >= 2:
+                prev = float(hist["Close"].iloc[-2])
+                curr = float(hist["Close"].iloc[-1])
                 change = (curr - prev) / prev * 100
                 arrow = "▲" if change > 0 else "▼"
                 result[name] = f"{curr:,.1f} {arrow}{abs(change):.1f}%"
@@ -107,8 +114,8 @@ def get_market_data():
     return result
 
 def get_news():
-    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-    today = datetime.now().strftime("%Y-%m-%d")
+    yesterday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+    today = now.strftime("%Y-%m-%d")
     sector_query = " OR ".join(SECTORS)
     query = f"미국증시 OR 월가 OR 나스닥 OR {sector_query}"
     url = (
@@ -130,13 +137,13 @@ def get_news():
 
 def get_ai_analysis(market_data, news_headlines):
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    today = datetime.now().strftime("%Y년 %m월 %d일")
+     today_str = now.strftime("%Y년 %m월 %d일")
     data_str = json.dumps(market_data, ensure_ascii=False)
     news_str = "\n".join([f"- {n}" for n in news_headlines])
     sectors_str = ", ".join(SECTORS)
 
     prompt = f"""당신은 경력 15년의 국내 증권사 수석 애널리스트입니다.
-오늘 날짜는 {today}이며, 지금은 아침 장 시작 전입니다.
+오늘 날짜는 {today_str}이며, 지금은 아침 장 시작 전입니다.
 아래는 전날 마감된 시장 데이터와 간밤에 나온 주요 뉴스입니다.
 이를 바탕으로 오늘 코스피 시장을 전망하는 브리핑을 작성해주세요.
 
@@ -203,8 +210,8 @@ def send_kakao(text, token):
             print(f"전송 실패: {r.text}")
 
 def main():
-    today = datetime.now().strftime("%Y.%m.%d (%a)")
-    yesterday = (datetime.now() - timedelta(days=1)).strftime("%m.%d")
+    today = now.strftime("%Y.%m.%d (%a)")
+    yesterday = (now - timedelta(days=1)).strftime("%m.%d")
     print("토큰 갱신 중...")
     token = refresh_kakao_token()
 
