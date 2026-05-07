@@ -9,6 +9,8 @@ import re
 from datetime import datetime, timedelta
 import anthropic
 import pytz
+from PIL import Image, ImageDraw, ImageFont
+import base64
 
 # 한국 시간 기준
 KST = pytz.timezone('Asia/Seoul')
@@ -23,6 +25,7 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_REPO = os.getenv("GITHUB_REPO")
+IMGBB_API_KEY = os.getenv("IMGBB_API_KEY")
 
 SECTORS = ["반도체", "AI", "정유", "선박", "해운", "물류", "원자재"]
 
@@ -109,12 +112,9 @@ def get_naver_stock(ticker):
 
 def get_market_data():
     result = {}
-
-    # 국내 지수 (네이버 API)
     result["코스피"] = get_naver_index("KOSPI")
     result["코스닥"] = get_naver_index("KOSDAQ")
 
-    # 국내 종목 (네이버 API)
     kr_tickers = {
         "삼성전자": "005930",
         "SK하이닉스": "000660",
@@ -123,7 +123,6 @@ def get_market_data():
     for name, ticker in kr_tickers.items():
         result[name] = get_naver_stock(ticker)
 
-    # 해외 종목/지수 (yfinance)
     us_tickers = {
         "라인야후": "4689.T",
         "애플": "AAPL",
@@ -220,10 +219,141 @@ def get_ai_analysis(market_data, news_headlines):
     )
     return message.content[0].text
 
-def send_kakao(text, token):
+def make_briefing_image(market_data, analysis):
+    WIDTH, HEIGHT = 800, 1050
+    BG = "#0D1117"
+    CARD = "#161B22"
+    BORDER = "#21262D"
+    ACCENT = "#58A6FF"
+    GREEN = "#3FB950"
+    RED = "#F85149"
+    YELLOW = "#D29922"
+    WHITE = "#E6EDF3"
+    GRAY = "#8B949E"
+
+    img = Image.new("RGB", (WIDTH, HEIGHT), BG)
+    draw = ImageDraw.Draw(img)
+
+    # 한글 폰트
+    font_paths = [
+        "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf",
+        "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    ]
+    def load_font(size, bold=False):
+        for path in font_paths:
+            if os.path.exists(path):
+                try:
+                    return ImageFont.truetype(path, size)
+                except:
+                    continue
+        return ImageFont.load_default()
+
+    f_title = load_font(26, bold=True)
+    f_section = load_font(18, bold=True)
+    f_body = load_font(16)
+    f_small = load_font(13)
+
+    def rr(xy, r, fill, outline=None):
+        x1, y1, x2, y2 = xy
+        draw.rounded_rectangle([x1, y1, x2, y2], radius=r, fill=fill, outline=outline, width=1)
+
+    def section(y, title, rows, tc=ACCENT):
+        h = 48 + len(rows) * 36
+        rr((30, y, WIDTH-30, y+h), 10, CARD, BORDER)
+        draw.text((52, y+13), title, font=f_section, fill=tc)
+        draw.line([(50, y+44), (WIDTH-50, y+44)], fill=BORDER, width=1)
+        for i, (label, value, color) in enumerate(rows):
+            ry = y + 52 + i*34
+            draw.text((55, ry), label, font=f_body, fill=GRAY)
+            draw.text((WIDTH-55, ry), value, font=f_body, fill=color, anchor="ra")
+        return y + h + 12
+
+    # 헤더
+    rr((30, 20, WIDTH-30, 95), 10, CARD, ACCENT)
+    draw.text((52, 33), "📊 오늘의 시장 브리핑", font=f_title, fill=WHITE)
+    draw.text((52, 68), now.strftime("%Y.%m.%d (%a)  |  매일 오전 7시 자동 발송"), font=f_small, fill=GRAY)
+
+    y = 115
+
+    def color(v):
+        return GREEN if "▲" in v else RED
+
+    y = section(y, "🇺🇸 미국 증시", [
+        ("나스닥", market_data["나스닥"], color(market_data["나스닥"])),
+        ("S&P500", market_data["S&P500"], color(market_data["S&P500"])),
+    ])
+    y = section(y, "📈 국내 증시 (전일 종가)", [
+        ("코스피", market_data["코스피"], color(market_data["코스피"])),
+        ("코스닥", market_data["코스닥"], color(market_data["코스닥"])),
+    ])
+    y = section(y, "💼 주요 종목 (전일 종가)", [
+        ("삼성전자", market_data["삼성전자"], color(market_data["삼성전자"])),
+        ("SK하이닉스", market_data["SK하이닉스"], color(market_data["SK하이닉스"])),
+        ("네이버", market_data["네이버"], color(market_data["네이버"])),
+        ("애플", market_data["애플"], color(market_data["애플"])),
+        ("테슬라", market_data["테슬라"], color(market_data["테슬라"])),
+        ("구글", market_data["구글"], color(market_data["구글"])),
+    ])
+    y = section(y, "💱 환율 / 유가", [
+        ("원/달러", market_data["원/달러"], color(market_data["원/달러"])),
+        ("WTI유가", market_data["WTI유가"], color(market_data["WTI유가"])),
+    ])
+
+    # AI 분석 요약 (첫 두 줄만)
+    lines = [l for l in analysis.split('\n') if l.strip()][:4]
+    ah = 50 + len(lines) * 26
+    rr((30, y, WIDTH-30, y+ah), 10, CARD, YELLOW)
+    draw.text((52, y+13), "🔮 AI 코스피 전망", font=f_section, fill=YELLOW)
+    draw.line([(50, y+44), (WIDTH-50, y+44)], fill=BORDER, width=1)
+    for i, line in enumerate(lines):
+        draw.text((55, y+52+i*26), line[:55], font=f_small, fill=WHITE)
+
+    path = "/tmp/briefing.png"
+    img.save(path)
+    return path
+
+def upload_to_imgbb(image_path):
+    with open(image_path, "rb") as f:
+        encoded = base64.b64encode(f.read()).decode("utf-8")
+    r = requests.post(
+        "https://api.imgbb.com/1/upload",
+        data={"key": IMGBB_API_KEY, "image": encoded}
+    )
+    result = r.json()
+    if result.get("success"):
+        url = result["data"]["url"]
+        print(f"이미지 업로드 성공: {url}")
+        return url
+    else:
+        print(f"이미지 업로드 실패: {result}")
+        return None
+
+def send_kakao_image(image_url, token):
     url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
     headers = {"Authorization": f"Bearer {token}"}
+    data = {
+        "template_object": json.dumps({
+            "object_type": "feed",
+            "content": {
+                "title": f"📊 {now.strftime('%Y.%m.%d')} 아침 시장 브리핑",
+                "description": "매일 오전 7시 자동 발송",
+                "image_url": image_url,
+                "image_width": 800,
+                "image_height": 1050,
+                "link": {"web_url": "https://finance.naver.com"}
+            }
+        }, ensure_ascii=False)
+    }
+    r = requests.post(url, headers=headers, data=data)
+    if r.status_code == 200:
+        print("이미지 메시지 전송 성공!")
+    else:
+        print(f"이미지 전송 실패: {r.text}")
 
+def send_kakao_text(text, token):
+    url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
+    headers = {"Authorization": f"Bearer {token}"}
     chunks = []
     lines = text.split('\n')
     current = ""
@@ -236,7 +366,6 @@ def send_kakao(text, token):
             current += "\n" + line if current else line
     if current:
         chunks.append(current.strip())
-
     for i, chunk in enumerate(chunks):
         data = {
             "template_object": json.dumps({
@@ -247,13 +376,11 @@ def send_kakao(text, token):
         }
         r = requests.post(url, headers=headers, data=data)
         if r.status_code == 200:
-            print(f"메시지 {i+1}/{len(chunks)} 전송 성공!")
+            print(f"텍스트 메시지 {i+1}/{len(chunks)} 전송 성공!")
         else:
             print(f"전송 실패: {r.text}")
 
 def main():
-    today = now.strftime("%Y.%m.%d (%a)")
-    yesterday = (now - timedelta(days=1)).strftime("%m.%d")
     print("토큰 갱신 중...")
     token = refresh_kakao_token()
 
@@ -263,37 +390,25 @@ def main():
     print("AI 분석 중...")
     analysis = get_ai_analysis(market_data, news)
 
-    msg1 = f"""📊 {today} 아침 시장 브리핑
+    print(market_data)
+    print(analysis)
 
-🇺🇸 미국 증시 ({yesterday} 마감)
-나스닥: {market_data['나스닥']}
-S&P500: {market_data['S&P500']}
+    # 이미지 생성 및 전송
+    if IMGBB_API_KEY:
+        print("이미지 생성 중...")
+        image_path = make_briefing_image(market_data, analysis)
+        image_url = upload_to_imgbb(image_path)
+        if image_url:
+            send_kakao_image(image_url, token)
+        else:
+            print("이미지 업로드 실패, 텍스트로 전송")
+            send_kakao_text(analysis, token)
+    else:
+        print("IMGBB_API_KEY 없음, 텍스트로 전송")
+        send_kakao_text(analysis, token)
 
-📈 국내 증시 (전일 종가)
-코스피: {market_data['코스피']}
-코스닥: {market_data['코스닥']}
-
-💼 주요 종목 (전일 종가)
-삼성전자: {market_data['삼성전자']}
-SK하이닉스: {market_data['SK하이닉스']}
-네이버: {market_data['네이버']}
-라인야후: {market_data['라인야후']}
-애플: {market_data['애플']}
-테슬라: {market_data['테슬라']}
-구글: {market_data['구글']}
-
-💱 환율 / 유가
-원/달러: {market_data['원/달러']}
-WTI유가: {market_data['WTI유가']}"""
-
-    msg2 = analysis
-
-    print(msg1)
-    print("\n--- AI 분석 ---")
-    print(msg2)
-
-    send_kakao(msg1, token)
-    send_kakao(msg2, token)
+    # AI 분석은 항상 텍스트로도 전송
+    send_kakao_text(analysis, token)
 
 if __name__ == "__main__":
     main()

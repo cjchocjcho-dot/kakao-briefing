@@ -11,13 +11,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: 한글 폰트 설치
+        run: sudo apt-get install -y fonts-nanum
+
       - name: Python 설치
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
       - name: 패키지 설치
-        run: pip install yfinance requests anthropic python-dotenv pynacl pykrx
+        run: pip install yfinance requests anthropic python-dotenv pynacl pytz Pillow
 
       - name: 브리핑 실행
         env:
@@ -27,6 +30,7 @@ jobs:
           KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           NEWSAPI_KEY: ${{ secrets.NEWSAPI_KEY }}
+          IMGBB_API_KEY: ${{ secrets.IMGBB_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPO: ${{ github.repository }}
         run: python briefing.py
