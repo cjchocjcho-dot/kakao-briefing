@@ -8,6 +8,7 @@ import json
 from datetime import datetime, timedelta
 import anthropic
 import pytz
+import re
 
 # 한국 시간 기준
 KST = pytz.timezone('Asia/Seoul')
@@ -22,6 +23,8 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_REPO = os.getenv("GITHUB_REPO")
+KOSPI_PREDICTION = os.getenv("KOSPI_PREDICTION", "0,0")
+KOSPI_HIT_RECORD = os.getenv("KOSPI_HIT_RECORD", "0,0")
 
 SECTORS = ["반도체", "AI", "정유", "선박", "해운", "물류", "원자재", "AI전력"]
 
@@ -88,6 +91,19 @@ def get_naver_index(code):
     except Exception as e:
         print(f"네이버 지수 오류 ({code}): {e}")
         return "오류"
+
+def get_naver_index_value(code):
+    # 전일 종가 숫자만 반환
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        url = f"https://m.stock.naver.com/api/index/{code}/price?pageSize=5&pageNo=1"
+        r = requests.get(url, headers=headers)
+        data = r.json()
+        today_str = now.strftime("%Y-%m-%d")
+        filtered = [d for d in data if d["localTradedAt"] != today_str]
+        return float(str(filtered[0]["closePrice"]).replace(",", ""))
+    except:
+        return None
 
 def get_naver_stock(ticker):
     try:
@@ -263,6 +279,63 @@ def get_ai_analysis(market_data, news_headlines):
     )
     return message.content[0].text
 
+def extract_prediction(analysis):
+    # AI 분석에서 코스피 예측 범위 추출
+    try:
+        matches = re.findall(r'(\d{1,2},\d{3})~(\d{1,2},\d{3})', analysis)
+        if matches:
+            low = float(matches[-1][0].replace(",", ""))
+            high = float(matches[-1][1].replace(",", ""))
+            return low, high
+    except:
+        pass
+    return None, None
+
+def check_prediction():
+    # 전날 예측 vs 실제 종가 비교
+    try:
+        pred_low, pred_high = KOSPI_PREDICTION.split(",")
+        pred_low = float(pred_low)
+        pred_high = float(pred_high)
+
+        if pred_low == 0 and pred_high == 0:
+            return None
+
+        # 전날 실제 종가 가져오기
+        actual = get_naver_index_value("KOSPI")
+        if not actual:
+            return None
+
+        hits, total = KOSPI_HIT_RECORD.split(",")
+        hits = int(hits)
+        total = int(total)
+        total += 1
+
+        is_hit = pred_low <= actual <= pred_high
+        if is_hit:
+            hits += 1
+            result_emoji = "✅ 적중!"
+        else:
+            result_emoji = "❌ 빗나감"
+
+        hit_rate = round(hits / total * 100)
+
+        # 기록 업데이트
+        update_github_secret("KOSPI_HIT_RECORD", f"{hits},{total}")
+
+        return {
+            "pred_low": pred_low,
+            "pred_high": pred_high,
+            "actual": actual,
+            "result": result_emoji,
+            "hits": hits,
+            "total": total,
+            "hit_rate": hit_rate,
+        }
+    except Exception as e:
+        print(f"예측 비교 오류: {e}")
+        return None
+
 def send_kakao_text(text, token):
     url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
     headers = {"Authorization": f"Bearer {token}"}
@@ -300,14 +373,34 @@ def main():
     print("토큰 갱신 중...")
     token = refresh_kakao_token()
 
+    # 전날 예측 적중 여부 확인
+    prediction_result = check_prediction()
+
     print("데이터 수집 중...")
     market_data = get_market_data()
     news = get_news()
     print("AI 분석 중...")
     analysis = get_ai_analysis(market_data, news)
 
-    msg1 = f"""📊 {today} 아침 시장 브리핑
+    # 오늘 예측 범위 추출 후 저장
+    pred_low, pred_high = extract_prediction(analysis)
+    if pred_low and pred_high:
+        update_github_secret("KOSPI_PREDICTION", f"{pred_low},{pred_high}")
+        print(f"오늘 예측 저장: {pred_low}~{pred_high}")
 
+    # 예측 적중 메시지 생성
+    prediction_msg = ""
+    if prediction_result:
+        prediction_msg = f"""
+🎯 어제 AI 예측 vs 실제
+예측 범위: {prediction_result['pred_low']:,.0f}~{prediction_result['pred_high']:,.0f}p
+실제 종가: {prediction_result['actual']:,.2f}p
+결과: {prediction_result['result']}
+누적 적중률: {prediction_result['hits']}/{prediction_result['total']} ({prediction_result['hit_rate']}%)
+"""
+
+    msg1 = f"""📊 {today} 아침 시장 브리핑
+{prediction_msg}
 🇺🇸 미국 증시 ({yesterday} 마감)
 나스닥: {market_data['나스닥']}
 S&P500: {market_data['S&P500']}
