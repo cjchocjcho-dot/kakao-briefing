@@ -9,8 +9,13 @@ on:
 jobs:
   send-briefing:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Python 설치
         uses: actions/setup-python@v5
@@ -28,6 +33,9 @@ jobs:
           KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           NEWSAPI_KEY: ${{ secrets.NEWSAPI_KEY }}
+          IMGBB_API_KEY: ${{ secrets.IMGBB_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPO: ${{ github.repository }}
+          KOSPI_PREDICTION: ${{ secrets.KOSPI_PREDICTION }}
+          KOSPI_HIT_RECORD: ${{ secrets.KOSPI_HIT_RECORD }}
         run: python briefing.py
