@@ -152,24 +152,72 @@ def get_market_data():
 def get_news():
     yesterday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
     today = now.strftime("%Y-%m-%d")
-    sector_query = " OR ".join(SECTORS)
-    query = f"미국증시 OR 월가 OR 나스닥 OR {sector_query}"
-    url = (
-        f"https://newsapi.org/v2/everything"
-        f"?q={query}"
-        f"&language=ko"
-        f"&from={yesterday}"
-        f"&to={today}"
-        f"&pageSize=10"
-        f"&sortBy=publishedAt"
-        f"&apiKey={NEWSAPI_KEY}"
-    )
-    try:
-        r = requests.get(url)
-        articles = r.json().get("articles", [])
-        return [a["title"] for a in articles[:8]]
-    except:
-        return ["뉴스를 가져오지 못했습니다."]
+
+    all_titles = []
+
+    # 한국어 뉴스
+    queries_ko = [
+        "미국증시 OR 나스닥 OR 월가 OR S&P500",
+        "반도체 OR 삼성전자 OR SK하이닉스 OR TSMC",
+        "AI OR 인공지능 OR 엔비디아",
+        "해운 OR 선박 OR 물류 OR HMM",
+        "정유 OR 유가 OR 원유 OR 에너지",
+    ]
+
+    # 영어 뉴스
+    queries_en = [
+        "NASDAQ OR S&P500 OR Wall Street",
+        "semiconductor OR TSMC OR Nvidia OR memory chip",
+        "AI OR artificial intelligence OR OpenAI",
+        "shipping OR logistics OR freight",
+        "oil price OR crude oil OR energy",
+    ]
+
+    for query in queries_ko:
+        try:
+            url = (
+                f"https://newsapi.org/v2/everything"
+                f"?q={query}"
+                f"&language=ko"
+                f"&from={yesterday}"
+                f"&to={today}"
+                f"&pageSize=3"
+                f"&sortBy=publishedAt"
+                f"&apiKey={NEWSAPI_KEY}"
+            )
+            r = requests.get(url)
+            articles = r.json().get("articles", [])
+            all_titles += [a["title"] for a in articles[:2]]
+        except:
+            pass
+
+    for query in queries_en:
+        try:
+            url = (
+                f"https://newsapi.org/v2/everything"
+                f"?q={query}"
+                f"&language=en"
+                f"&from={yesterday}"
+                f"&to={today}"
+                f"&pageSize=2"
+                f"&sortBy=publishedAt"
+                f"&apiKey={NEWSAPI_KEY}"
+            )
+            r = requests.get(url)
+            articles = r.json().get("articles", [])
+            all_titles += [a["title"] for a in articles[:1]]
+        except:
+            pass
+
+    # 중복 제거
+    seen = set()
+    result = []
+    for t in all_titles:
+        if t not in seen:
+            seen.add(t)
+            result.append(t)
+
+    return result[:15]
 
 def get_ai_analysis(market_data, news_headlines):
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -181,6 +229,7 @@ def get_ai_analysis(market_data, news_headlines):
     prompt = f"""당신은 경력 15년의 국내 증권사 수석 애널리스트입니다.
 오늘 날짜는 {today_str}이며, 지금은 아침 장 시작 전입니다.
 아래는 전날 마감된 시장 데이터와 간밤에 나온 주요 뉴스입니다.
+뉴스는 한국어와 영어가 섞여있을 수 있으나 반드시 모든 내용을 한국어로만 작성해주세요.
 이를 바탕으로 오늘 코스피 시장을 전망하는 브리핑을 작성해주세요.
 
 [전일 마감 시장 데이터]
