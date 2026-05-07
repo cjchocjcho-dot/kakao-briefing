@@ -252,13 +252,13 @@ def get_ai_analysis(market_data, news_headlines):
 - 예상 등락 방향과 근거
 - 주목할 종목 또는 섹터
 - 리스크 요인
-- 예상 코스피 지수 범위
+- 예상 코스피 지수 범위 (반드시 숫자로 예: 7,300~7,450p)
 
 💬 한줄 총평"""
 
     message = client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=800,
+        max_tokens=1000,
         messages=[{"role": "user", "content": prompt}]
     )
     return message.content[0].text
@@ -271,7 +271,7 @@ def send_kakao_text(text, token):
     lines = text.split('\n')
     current = ""
     for line in lines:
-        if len(current) + len(line) + 1 > 800:
+        if len(current) + len(line) + 1 > 1000:
             if current:
                 chunks.append(current.strip())
             current = line
