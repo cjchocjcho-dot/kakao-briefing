@@ -76,12 +76,13 @@ def update_github_secret(secret_name, secret_value):
 def get_naver_index(code):
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
-        url = f"https://m.stock.naver.com/api/index/{code}/price?pageSize=2&pageNo=1"
+        url = f"https://m.stock.naver.com/api/index/{code}/price?pageSize=5&pageNo=1"
         r = requests.get(url, headers=headers)
         data = r.json()
-        print(f"[{code}] 히스토리 응답: {data}")
-        curr = float(str(data[0]["closePrice"]).replace(",", ""))
-        prev = float(str(data[1]["closePrice"]).replace(",", ""))
+        today_str = now.strftime("%Y-%m-%d")
+        filtered = [d for d in data if d["localTradedAt"] != today_str]
+        curr = float(str(filtered[0]["closePrice"]).replace(",", ""))
+        prev = float(str(filtered[1]["closePrice"]).replace(",", ""))
         change = (curr - prev) / prev * 100
         arrow = "▲" if change >= 0 else "▼"
         return f"{curr:,.2f} {arrow}{abs(change):.2f}%"
@@ -92,12 +93,13 @@ def get_naver_index(code):
 def get_naver_stock(ticker):
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
-        url = f"https://m.stock.naver.com/api/stock/{ticker}/price?pageSize=2&pageNo=1"
+        url = f"https://m.stock.naver.com/api/stock/{ticker}/price?pageSize=5&pageNo=1"
         r = requests.get(url, headers=headers)
         data = r.json()
-        print(f"[{ticker}] 히스토리 응답: {data}")
-        curr = float(str(data[0]["closePrice"]).replace(",", ""))
-        prev = float(str(data[1]["closePrice"]).replace(",", ""))
+        today_str = now.strftime("%Y-%m-%d")
+        filtered = [d for d in data if d["localTradedAt"] != today_str]
+        curr = float(str(filtered[0]["closePrice"]).replace(",", ""))
+        prev = float(str(filtered[1]["closePrice"]).replace(",", ""))
         change = (curr - prev) / prev * 100
         arrow = "▲" if change >= 0 else "▼"
         return f"{curr:,.0f} {arrow}{abs(change):.2f}%"
