@@ -23,7 +23,7 @@ NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_REPO = os.getenv("GITHUB_REPO")
 
-SECTORS = ["반도체", "AI", "정유", "선박", "해운", "물류", "원자재"]
+SECTORS = ["반도체", "AI", "정유", "선박", "해운", "물류", "원자재", "AI전력"]
 
 def refresh_kakao_token():
     url = "https://kauth.kakao.com/oauth/token"
@@ -155,22 +155,22 @@ def get_news():
 
     all_titles = []
 
-    # 한국어 뉴스
     queries_ko = [
         "미국증시 OR 나스닥 OR 월가 OR S&P500",
         "반도체 OR 삼성전자 OR SK하이닉스 OR TSMC",
         "AI OR 인공지능 OR 엔비디아",
         "해운 OR 선박 OR 물류 OR HMM",
         "정유 OR 유가 OR 원유 OR 에너지",
+        "AI전력 OR 데이터센터 전력 OR 변압기 OR HD현대일렉트릭 OR 효성중공업",
     ]
 
-    # 영어 뉴스
     queries_en = [
         "NASDAQ OR S&P500 OR Wall Street",
         "semiconductor OR TSMC OR Nvidia OR memory chip",
         "AI OR artificial intelligence OR OpenAI",
         "shipping OR logistics OR freight",
         "oil price OR crude oil OR energy",
+        "AI power demand OR data center energy OR power grid",
     ]
 
     for query in queries_ko:
@@ -209,7 +209,6 @@ def get_news():
         except:
             pass
 
-    # 중복 제거
     seen = set()
     result = []
     for t in all_titles:
