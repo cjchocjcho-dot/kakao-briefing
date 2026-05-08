@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 import anthropic
 import pytz
 import re
+import subprocess
 
 # 한국 시간 기준
 KST = pytz.timezone('Asia/Seoul')
@@ -23,10 +24,9 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_REPO = os.getenv("GITHUB_REPO")
-KOSPI_PREDICTION = os.getenv("KOSPI_PREDICTION", "0,0")
-KOSPI_HIT_RECORD = os.getenv("KOSPI_HIT_RECORD", "0,0")
 
 SECTORS = ["반도체", "AI", "정유", "선박", "해운", "물류", "원자재", "AI전력"]
+PREDICTION_FILE = "prediction.json"
 
 def refresh_kakao_token():
     url = "https://kauth.kakao.com/oauth/token"
@@ -73,7 +73,30 @@ def update_github_secret(secret_name, secret_value):
         requests.put(secret_url, headers=headers, json=payload)
         print(f"{secret_name} 업데이트 완료!")
     except Exception as e:
-        print(f"Secret 업데이트 실패: {e}")
+        print(f"Secret 업데이트 실패 (무시): {e}")
+
+def load_prediction():
+    try:
+        if os.path.exists(PREDICTION_FILE):
+            with open(PREDICTION_FILE, "r") as f:
+                return json.load(f)
+    except:
+        pass
+    return {"pred_low": 0, "pred_high": 0, "hits": 0, "total": 0}
+
+def save_prediction(data):
+    try:
+        with open(PREDICTION_FILE, "w") as f:
+            json.dump(data, f)
+        # Git에 커밋
+        subprocess.run(["git", "config", "user.email", "briefing@bot.com"], check=True)
+        subprocess.run(["git", "config", "user.name", "Briefing Bot"], check=True)
+        subprocess.run(["git", "add", PREDICTION_FILE], check=True)
+        subprocess.run(["git", "commit", "-m", "예측 데이터 업데이트"], check=True)
+        subprocess.run(["git", "push"], check=True)
+        print("예측 데이터 저장 완료!")
+    except Exception as e:
+        print(f"예측 데이터 저장 실패: {e}")
 
 def get_naver_index(code):
     try:
@@ -93,7 +116,6 @@ def get_naver_index(code):
         return "오류"
 
 def get_naver_index_value(code):
-    # 전일 종가 숫자만 반환
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
         url = f"https://m.stock.naver.com/api/index/{code}/price?pageSize=5&pageNo=1"
@@ -280,7 +302,6 @@ def get_ai_analysis(market_data, news_headlines):
     return message.content[0].text
 
 def extract_prediction(analysis):
-    # AI 분석에서 코스피 예측 범위 추출
     try:
         matches = re.findall(r'(\d{1,2},\d{3})~(\d{1,2},\d{3})', analysis)
         if matches:
@@ -291,24 +312,20 @@ def extract_prediction(analysis):
         pass
     return None, None
 
-def check_prediction():
-    # 전날 예측 vs 실제 종가 비교
+def check_prediction(pred_data):
     try:
-        pred_low, pred_high = KOSPI_PREDICTION.split(",")
-        pred_low = float(pred_low)
-        pred_high = float(pred_high)
+        pred_low = pred_data.get("pred_low", 0)
+        pred_high = pred_data.get("pred_high", 0)
 
         if pred_low == 0 and pred_high == 0:
             return None
 
-        # 전날 실제 종가 가져오기
         actual = get_naver_index_value("KOSPI")
         if not actual:
             return None
 
-        hits, total = KOSPI_HIT_RECORD.split(",")
-        hits = int(hits)
-        total = int(total)
+        hits = pred_data.get("hits", 0)
+        total = pred_data.get("total", 0)
         total += 1
 
         is_hit = pred_low <= actual <= pred_high
@@ -320,8 +337,8 @@ def check_prediction():
 
         hit_rate = round(hits / total * 100)
 
-        # 기록 업데이트
-        update_github_secret("KOSPI_HIT_RECORD", f"{hits},{total}")
+        pred_data["hits"] = hits
+        pred_data["total"] = total
 
         return {
             "pred_low": pred_low,
@@ -373,8 +390,11 @@ def main():
     print("토큰 갱신 중...")
     token = refresh_kakao_token()
 
+    # 예측 데이터 로드
+    pred_data = load_prediction()
+
     # 전날 예측 적중 여부 확인
-    prediction_result = check_prediction()
+    prediction_result = check_prediction(pred_data)
 
     print("데이터 수집 중...")
     market_data = get_market_data()
@@ -385,7 +405,9 @@ def main():
     # 오늘 예측 범위 추출 후 저장
     pred_low, pred_high = extract_prediction(analysis)
     if pred_low and pred_high:
-        update_github_secret("KOSPI_PREDICTION", f"{pred_low},{pred_high}")
+        pred_data["pred_low"] = pred_low
+        pred_data["pred_high"] = pred_high
+        save_prediction(pred_data)
         print(f"오늘 예측 저장: {pred_low}~{pred_high}")
 
     # 예측 적중 메시지 생성
